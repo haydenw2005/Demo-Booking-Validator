@@ -76,3 +76,79 @@ The applications are intentionally kept separate (not a monorepo) for simplicity
 - Modern, clean design with consistent spacing
 - Responsive layout that works on all device sizes
 - Inter font from Google Fonts for typography
+
+## Backend Testing Architecture
+
+### Dynamic Test Execution Flow
+
+The demo validator now uses a fully dynamic testing approach:
+
+1. **Test Goals**: A list of high-level goals is defined (find demo button, fill forms, etc.)
+2. **Dynamic Action Planning**: For each goal:
+
+   - Instead of pre-defining subtasks, the system determines the next appropriate subtask and action on-the-fly
+   - This decision is based on the current state, available page elements, and action history
+   - OpenAI's GPT-4o model is used to make these decisions
+
+3. **Action Execution Loop**:
+
+   - For each goal, the system enters a loop where it:
+     - Determines the next subtask and action to take
+     - Executes the action using Playwright
+     - Records the result in the action history
+     - Continues until the goal is complete or a maximum number of attempts is reached
+
+4. **Semantic Goal Advancement**:
+
+   - The AI can determine when to advance to the next goal based on semantic understanding of progress
+   - Rather than rigidly following predefined completion criteria, the system can interpret when a goal has been satisfied
+   - Each advancement decision includes a reason explaining why the current goal can be considered complete
+   - This makes the testing more adaptive to different website implementations
+
+5. **Advanced Multi-Window Management**:
+
+   - The system uses Playwright's event-based approach to detect and track all browser windows
+   - Special handling for new tabs opened via `target="_blank"` links using `waitForEvent('page')` pattern
+   - Pre-click evaluation of link elements to anticipate new tab openings
+   - Proper synchronization of page loading states across multiple windows
+   - Continuous monitoring of the browser context to detect page changes
+   - Detection and handling of navigation events within existing pages
+
+6. **Active Page Verification**:
+
+   - Periodic refreshing of the page list to ensure all tabs are accounted for
+   - Smart fallback to the most recently active page when target page cannot be found
+   - Before/after action page inventory to track changes in the browser state
+   - Detailed logging of page URLs throughout the test execution process
+
+7. **Robust Page Analysis**:
+
+   - Pages are checked for readiness before analysis
+   - DOM state verification ensures pages are in a suitable state for interaction
+   - Timeouts and error handling ensure the process continues even when encountering problematic pages
+   - Empty page contexts are created even when elements can't be extracted, maintaining awareness of all windows
+   - Detailed logging provides visibility into the state of all pages throughout the test
+
+8. **Action History with Context**: Each action stores:
+
+   - The page URL
+   - What action was taken
+   - Whether it was successful
+   - An explanation of what happened
+   - A purpose describing why the action was taken and how it relates to the goal
+
+9. **Cross-Page Awareness**: The system can navigate across multiple browser pages/tabs
+
+### Benefits of Dynamic Testing
+
+- **Adaptability**: Adapts to different website structures and flows without hard-coded paths
+- **Resilience**: Can recover from unexpected states or errors by re-evaluating the next best action
+- **Context Awareness**: Maintains understanding of the overall goal while executing specific actions
+- **Semantic Goal Completion**: Can intelligently determine when a goal has been sufficiently completed
+- **Comprehensive Window Support**: Robustly handles websites that open new tabs, windows or popups
+- **Anticipatory Behavior**: Predicts when actions might open new tabs and prepares accordingly
+- **Synchronization**: Coordinates actions across multiple browser tabs
+- **Fault Tolerance**: Continues functioning even when encountering problematic or unexpected page states
+- **Self-Documentation**: Records the purpose of each action, making the test flow understandable
+
+This architecture represents a shift from scripted testing to autonomous, goal-oriented testing that can handle the variability of modern web applications.
