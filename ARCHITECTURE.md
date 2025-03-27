@@ -60,15 +60,31 @@ The applications are intentionally kept separate (not a monorepo) for simplicity
 ### Component Structure
 
 - `Header.tsx`: Main navigation header with links to Home and History
-- `page.tsx`: Main landing page with URL input form
+- `page.tsx`: Main landing page with URL input form and test configuration
 - `layout.tsx`: Root layout with global styles and metadata
+- `ApiTestResultDisplay.tsx`: Component to display test results
 
 ### UI Flow
 
 1. User lands on the home page
 2. User enters a landing page URL in the form
-3. Form submission triggers the validation process
-4. Results will be displayed (to be implemented)
+3. User can optionally customize test profile and test goals via accordions
+4. Form submission triggers the validation process with the custom or default configuration
+5. Results are displayed after test completion
+
+### User Customization Features
+
+- **Test Profile Customization**: Users can edit all fields of the test profile including:
+  - Name, email, phone number
+  - Company, job title
+  - Country, timezone
+  - Description
+- **Test Goals Customization**: Users can:
+  - Edit existing test goals
+  - Remove test goals
+  - Add new test goals
+- The customized data is sent to the backend and used for the actual test execution
+- Default values are provided if users choose not to customize
 
 ### Styling
 
@@ -76,8 +92,30 @@ The applications are intentionally kept separate (not a monorepo) for simplicity
 - Modern, clean design with consistent spacing
 - Responsive layout that works on all device sizes
 - Inter font from Google Fonts for typography
+- Collapsible accordions for space-efficient form design
 
 ## Backend Testing Architecture
+
+### Customizable Testing Parameters
+
+The demo validator now accepts customizable parameters from the frontend:
+
+1. **Custom Test Profile**: The system accepts a user-defined profile with:
+   - Personal details (name, email, phone)
+   - Professional information (company, job title)
+   - Location data (country, timezone)
+   - Description text
+2. **Custom Test Goals**: Users can define their own set of testing goals:
+
+   - Add, remove, or edit test goals
+   - Change the order of goals
+   - Customize goal descriptions
+
+3. **Parameter Handling**:
+   - The backend API accepts these parameters in the request body
+   - If parameters are missing, the system falls back to default values
+   - Logging of received parameters for debugging purposes
+   - Error handling for malformed parameters
 
 ### Dynamic Test Execution Flow
 

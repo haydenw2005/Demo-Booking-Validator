@@ -6,7 +6,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const testProfile = {
+// Default values if not provided by the frontend
+const defaultTestProfile = {
   name: "John Doe",
   email: "john.doe@example.com",
   phone: "+1234567890",
@@ -16,7 +17,7 @@ const testProfile = {
   timezone: "America/New_York",
 };
 
-const goals = [
+const defaultGoals = [
   'Detect "Book a Demo" (or similar) buttons/links',
   "Click through to the booking flow",
   "Fill out any required forms",
@@ -24,12 +25,30 @@ const goals = [
   "Verify the booking was successful (e.g., confirmation page)",
 ];
 
-let currentGoal = 0;
-
 app.post("/api/test", async (req, res) => {
-  const result = await testDemoLink(req.body.url);
+  try {
+    const { url, testProfile, goals } = req.body;
 
-  res.json({ success: true, body: req.body, result });
+    // Use provided values or fall back to defaults
+    const profileToUse = testProfile || defaultTestProfile;
+    const goalsToUse = goals || defaultGoals;
+
+    console.log("Running test with:", {
+      url,
+      profile: profileToUse,
+      goals: goalsToUse,
+    });
+
+    const result = await testDemoLink(url, profileToUse, goalsToUse);
+
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error("Test error:", error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
 });
 
 app.listen(4000, () => console.log("Backend running on port 4000"));

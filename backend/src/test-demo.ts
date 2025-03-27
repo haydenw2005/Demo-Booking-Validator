@@ -3,6 +3,15 @@ import { generateObject } from "ai";
 import dotenv from "dotenv";
 import { Browser, BrowserContext, Page, chromium } from "playwright";
 import { z } from "zod";
+import {
+  ActionHistory,
+  ClickableElement,
+  EnhancedPageAction,
+  PageAction,
+  PageContext,
+  Step,
+  SubTask,
+} from "./types";
 dotenv.config();
 
 // Validate OpenAI API key
@@ -11,119 +20,26 @@ if (!openaiApiKey) {
   throw new Error("OPENAI_API_KEY environment variable is required");
 }
 
-const testProfile = {
-  name: "John Doe",
-  email: "john.doe@example.com",
-  phone: "+1234567890",
-  company: "Example Inc.",
-  jobTitle: "Software Engineer",
-  country: "United States",
-  timezone: "America/New_York",
+// Add a function to get only the most recent page context
+const getMostRecentPageContext = async (
+  context: BrowserContext
+): Promise<PageContext> => {
+  // Get all pages in the context
+  const pages = await context.pages();
+  console.log(`Found ${pages.length} pages in context, using most recent one`);
+
+  // Get the most recent page
+  const mostRecentPage = pages[pages.length - 1];
+
+  // Extract elements from the most recent page
+  const elements = await getPageElements(mostRecentPage);
+
+  return { url: mostRecentPage.url(), elements };
 };
 
-const goals = [
-  'Detect "Book a Demo" (or similar) buttons/links',
-  // "Click through to the booking flow",
-  `Fill out any required forms with the following profile. Not all fields have have to be used or exist SO MOVE ON IF YOU CAN'T FIND THE FIELD, etc. Also, the order does not correpsond to the order of the site's flow. ${JSON.stringify(
-    testProfile
-  )}`,
-  "Complete the meeting scheduling process",
-  "Verify the booking was successful (e.g., confirmation page)",
-];
-
-type ClickableElement = {
-  index: number;
-  tag: string;
-  text: string;
-  href: string;
-};
-
-type ActionResponse = {
-  id_click: string;
-  id_found: boolean;
-  error?: string | undefined;
-};
-
-type SubTask = {
-  description: string;
-  error?: string;
-  success: "true" | "false" | "not attempted";
-};
-
-type Step = {
-  description: string;
-  error?: string;
-  success: "true" | "false" | "not attempted";
-  subtasks: SubTask[];
-  completed: boolean;
-};
-
-type PageAction = {
-  action: "click" | "fill" | "select" | "wait";
-  selector: string;
-  value?: string;
-  success: boolean;
-  error?: string;
-  isGoalComplete: boolean;
-  pageUrl: string;
-  explanation: string;
-};
-
-// Add new types for tracking context
-type ActionHistory = {
-  success: boolean;
-  timestamp: number;
-  pageUrl: string;
-  explanation: string;
-  purpose?: string; // Adding purpose field to track context
-};
-
-type PageContext = {
-  url: string;
-  elements: ClickableElement[];
-};
-
-// Enhanced action response type with purpose
-type EnhancedPageAction = PageAction & {
-  purpose: string; // Adding purpose field to explain the context/reason for this action
-  advanceToNextGoal?: boolean; // Flag indicating whether to advance to the next goal
-  advanceReason?: string; // Explanation for why advancing to the next goal
-};
-
-const executePageAction = async (
-  page: any,
-  action: PageAction
-): Promise<void> => {
-  try {
-    switch (action.action) {
-      case "click":
-        await page.click(action.selector);
-        break;
-      case "fill":
-        if (!action.value) throw new Error("Value required for fill action");
-        await page.fill(action.selector, action.value);
-        break;
-      case "select":
-        if (!action.value) throw new Error("Value required for select action");
-        await page.selectOption(action.selector, action.value);
-        break;
-      case "wait":
-        await new Promise((resolve) => setTimeout(resolve, 1000)); //page.waitForSelector(action.selector);
-        break;
-    }
-    action.success = true;
-  } catch (error) {
-    action.success = false;
-    action.error =
-      error instanceof Error ? error.message : "Unknown error occurred";
-    throw error;
-  }
-};
-
-// Simplify the getPageElements function to focus on essential functionality
+// Refactored getPageElements to inject data-ai-index attributes
 const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
   try {
-    // Wait for page to be in a usable state
     await Promise.race([
       page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {}),
       page
@@ -133,14 +49,43 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
 
     console.log(`Extracting elements from: ${page.url()}`);
 
-    // Use a cleaner implementation with better error handling
+    // First, inject data-ai-index attributes into the DOM elements
+    await page.evaluate(() => {
+      // Generate a unique prefix for this page
+      const pageId = Math.random().toString(36).substring(2, 8);
+
+      // Select all interactive elements
+      const elements = document.querySelectorAll(
+        'a, button, input, select, textarea, [role="button"], [role="link"], [type="submit"], [type="button"]'
+      );
+
+      // Filter visible elements and inject data-ai-index attribute
+      let index = 0;
+      elements.forEach((el) => {
+        const style = window.getComputedStyle(el);
+        if (
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          style.opacity !== "0"
+        ) {
+          // Only set the attribute if it doesn't already exist
+          if (!el.hasAttribute("data-ai-index")) {
+            el.setAttribute("data-ai-index", `ai-${pageId}-${index}`);
+            index++;
+          }
+        }
+      });
+
+      return index; // Return the number of elements processed
+    });
+
+    // Now extract the elements with their data-ai-index attributes
     const elements = await page
       .$$eval(
         'a, button, input, select, textarea, [role="button"], [role="link"], [type="submit"], [type="button"]',
         (els: Element[]) => {
           return els
             .filter((el) => {
-              // Basic visibility check
               const style = window.getComputedStyle(el as HTMLElement);
               return (
                 style.display !== "none" &&
@@ -150,8 +95,6 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
             })
             .map((el: Element, idx: number) => {
               const htmlEl = el as HTMLElement;
-
-              // Get text content with fallbacks
               const text =
                 htmlEl.textContent?.trim() ||
                 htmlEl.getAttribute("aria-label") ||
@@ -159,13 +102,14 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
                 htmlEl.getAttribute("placeholder") ||
                 "";
 
-              // Get href for links
               const href =
                 htmlEl.tagName === "A"
                   ? (htmlEl as HTMLAnchorElement).href || ""
                   : "";
 
-              // Return minimal necessary data
+              // Get the stable data-ai-index attribute (maintain the format that was set above)
+              const dataAiIndex = htmlEl.getAttribute("data-ai-index") || "";
+
               return {
                 index: idx,
                 tag: htmlEl.tagName,
@@ -174,6 +118,7 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
                 id: htmlEl.id || "",
                 name: htmlEl.getAttribute("name") || "",
                 type: htmlEl.getAttribute("type") || "",
+                dataAiIndex, // Include the data-ai-index in the returned data
               };
             });
         }
@@ -187,39 +132,8 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
     return elements;
   } catch (error) {
     console.error(`Error with page ${page.url()}: ${error}`);
-    return []; // Return empty array instead of throwing
+    return [];
   }
-};
-
-// Streamlined version of getAllPageContexts
-const getAllPageContexts = async (
-  context: BrowserContext
-): Promise<PageContext[]> => {
-  // Get all pages in the context
-  const pages = await context.pages();
-  console.log(`Found ${pages.length} pages in context`);
-
-  const contexts: PageContext[] = [];
-
-  // Process each page
-  for (const page of pages) {
-    try {
-      // Skip irrelevant pages
-      if (page.url() === "about:blank" || !page.url().startsWith("http")) {
-        continue;
-      }
-
-      // Extract elements
-      const elements = await getPageElements(page);
-      contexts.push({ url: page.url(), elements });
-    } catch (error) {
-      console.error(`Error processing page: ${error}`);
-      // Still add the page to contexts, but with empty elements
-      contexts.push({ url: page.url(), elements: [] });
-    }
-  }
-
-  return contexts;
 };
 
 // Simplified waitForNewPage function
@@ -264,52 +178,7 @@ async function validateSelector(
   }
 }
 
-// Helper function to get available selectors as hints
-async function getAvailableSelectors(page: Page): Promise<string[]> {
-  try {
-    // Get common form elements and interactive elements
-    const selectors = await page
-      .$$eval(
-        'button, input, select, textarea, a[href], [role="button"]',
-        (elements) => {
-          return elements.map((el) => {
-            const tag = el.tagName.toLowerCase();
-            const id = el.id ? `#${el.id}` : "";
-            const type = el.getAttribute("type")
-              ? `[type="${el.getAttribute("type")}"]`
-              : "";
-            const name = el.getAttribute("name")
-              ? `[name="${el.getAttribute("name")}"]`
-              : "";
-            const textContent = el.textContent?.trim();
-            const placeholder = el.getAttribute("placeholder");
-
-            // Build a description of the element
-            let desc = "";
-            if (id) desc += id;
-            else if (name) desc += `${tag}${name}`;
-            else if (type) desc += `${tag}${type}`;
-            else desc += tag;
-
-            if (textContent)
-              desc += ` with text "${textContent.substring(0, 20)}${
-                textContent.length > 20 ? "..." : ""
-              }"`;
-            if (placeholder) desc += ` with placeholder "${placeholder}"`;
-
-            return desc;
-          });
-        }
-      )
-      .catch(() => []);
-
-    return selectors.slice(0, 10); // Limit to 10 suggestions to avoid overwhelming
-  } catch (error) {
-    return [];
-  }
-}
-
-// Enhanced executePageAction with selector validation
+// Refactored enhancedExecutePageAction to use data-ai-index for element selection
 const enhancedExecutePageAction = async (
   page: Page,
   action: PageAction,
@@ -321,32 +190,71 @@ const enhancedExecutePageAction = async (
   availableSelectors?: string[];
 }> => {
   try {
-    // First validate if the selector exists
-    // const selectorExists = await validateSelector(page, action.selector);
+    // Update the action's pageUrl to match the current page
+    action.pageUrl = page.url();
 
-    // if (!selectorExists) {
-    //   // If selector doesn't exist, get available selectors as hints
-    //   const availableSelectors = await getAvailableSelectors(page);
-    //   console.log(`Selector "${action.selector}" does not exist on the page`);
-    //   console.log(`Available selectors: ${availableSelectors.join(", ")}`);
+    // Check if we need to convert the selector to a data-ai-index selector
+    let selector = action.selector;
 
-    //   action.success = false;
-    //   action.error = `Selector "${
-    //     action.selector
-    //   }" does not exist on the page. Available elements include: ${availableSelectors.join(
-    //     ", "
-    //   )}`;
+    // Case 1: If selector is a number (index), convert to data-ai-index
+    if (!isNaN(Number(action.selector))) {
+      console.log(`Using index ${action.selector} for element selection.`);
+      // Get all elements and find the one with matching index
+      const elements = await getPageElements(page);
+      const targetElement = elements.find(
+        (el) => el.index === Number(action.selector)
+      );
 
-    //   return {
-    //     success: false,
-    //     selectorExists: false,
-    //     availableSelectors,
-    //   };
-    // }
+      if (!targetElement) {
+        console.log(`Element with index ${action.selector} not found.`);
+        action.success = false;
+        action.error = `Element with index ${action.selector} not found.`;
+        return { success: false, selectorExists: false };
+      }
+
+      console.log(
+        `Target element found: ${targetElement.tag} with text "${targetElement.text}"`
+      );
+      // Use the data-ai-index attribute for selection
+      selector = `[data-ai-index="${targetElement.dataAiIndex}"]`;
+    }
+    // Case 2: If selector starts with "ai-", assume it's already a data-ai-index
+    else if (
+      typeof action.selector === "string" &&
+      action.selector.startsWith("ai-")
+    ) {
+      selector = `[data-ai-index="${action.selector}"]`;
+    }
+
+    // Validate the selector exists on the page
+    const selectorExists = await validateSelector(page, selector);
+
+    if (!selectorExists) {
+      // If selector doesn't exist, get available selectors as hints
+      const availableElements = await getAvailableElements(page);
+      console.log(`Selector "${selector}" does not exist on the page`);
+
+      // Create formatted strings for each element
+      const formattedElements = availableElements.map(
+        (el) =>
+          `${el.tag} with text "${el.text}" (index: ${el.index}, data-ai-index: ${el.dataAiIndex})`
+      );
+
+      action.success = false;
+      action.error = `Selector "${selector}" does not exist on the page. Please use an element with a valid data-ai-index.`;
+
+      return {
+        success: false,
+        selectorExists: false,
+        availableSelectors: formattedElements,
+      };
+    }
+
+    // Use the validated selector for actions
+    action.selector = selector;
 
     switch (action.action) {
       case "click":
-        // Check if this might open a new tab
         const targetInfo = await page
           .evaluate((selector) => {
             const el = document.querySelector(selector);
@@ -357,7 +265,6 @@ const enhancedExecutePageAction = async (
           }, action.selector)
           .catch(() => null);
 
-        // Handle potential new tab/window opening
         if (targetInfo && targetInfo.target === "_blank") {
           const newPage = await waitForNewPage(
             () => page.click(action.selector),
@@ -369,7 +276,6 @@ const enhancedExecutePageAction = async (
             selectorExists: true,
           };
         } else {
-          // For regular clicks, still listen for potential new pages
           const pagePromise = context
             .waitForEvent("page", { timeout: 5000 })
             .catch(() => null);
@@ -408,16 +314,33 @@ const enhancedExecutePageAction = async (
     action.success = false;
     action.error =
       error instanceof Error ? error.message : "Unknown error occurred";
-    return { success: false, selectorExists: true }; // Selector exists but action failed for other reasons
+    return { success: false, selectorExists: true };
   }
 };
 
-// Streamlined testDemoLink function
-export const testDemoLink = async (url: string): Promise<Step[]> => {
+// Helper function to get available elements with their data-ai-index values
+async function getAvailableElements(page: Page): Promise<ClickableElement[]> {
+  try {
+    return await getPageElements(page);
+  } catch (error) {
+    console.error("Error getting available elements:", error);
+    return [];
+  }
+}
+
+// Modify the testDemoLink function signature
+export const testDemoLink = async (
+  url: string,
+  testProfile: any,
+  providedGoals: string[]
+): Promise<Step[]> => {
   const browser: Browser = await chromium.launch({
     headless: false,
     slowMo: 300, // Slightly faster while still stable
   });
+
+  // Use provided goals if available, otherwise use the default goals
+  const goals = providedGoals;
 
   const context: BrowserContext = await browser.newContext({
     javaScriptEnabled: true,
@@ -480,13 +403,17 @@ export const testDemoLink = async (url: string): Promise<Step[]> => {
           | { invalidSelector: string; availableSelectors: string[] }
           | undefined = undefined;
 
+        // Get the current active page (will be updated if new tabs are opened)
+        let activePage = (await context.pages())[0];
+
         // Action loop for current goal
         while (!currentStep.completed && maxActions > 0) {
           try {
-            // Log current pages
-            const allPages = await context.pages();
-            console.log(`\nOpen pages (${allPages.length}):`);
-            allPages.forEach((p) => console.log(`- ${p.url()}`));
+            // Get the most recent page
+            const pages = await context.pages();
+            activePage = pages[pages.length - 1];
+
+            console.log(`\nActive page: ${activePage.url()}`);
 
             // Determine next action with potential selector feedback
             const { action, subtask } = await determineNextActionAndSubtask(
@@ -495,6 +422,7 @@ export const testDemoLink = async (url: string): Promise<Step[]> => {
               actionHistory,
               goals,
               goalIndex,
+              testProfile,
               selectorFeedback
             );
 
@@ -520,19 +448,18 @@ export const testDemoLink = async (url: string): Promise<Step[]> => {
               break;
             }
 
-            // Find the correct page to execute the action on
-            let targetPage = await findTargetPage(context, action.pageUrl);
-
-            if (!targetPage) {
-              console.log(`No matching page found, using most recent page`);
-              const pages = await context.pages();
-              targetPage = pages[pages.length - 1] || page;
-            }
-
-            // Execute the action with selector validation
-            console.log(`Executing on page: ${targetPage.url()}`);
+            // Execute the action on the active page
+            console.log(`Executing on active page: ${activePage.url()}`);
             const { success, newPage, selectorExists, availableSelectors } =
-              await enhancedExecutePageAction(targetPage, action, context);
+              await enhancedExecutePageAction(activePage, action, context);
+
+            // If a new page was opened, update the active page
+            if (newPage) {
+              console.log(`New page opened: ${newPage.url()}`);
+              activePage = newPage;
+              // Focus on the new page
+              await newPage.bringToFront();
+            }
 
             // If selector doesn't exist, prepare feedback for the next iteration
             if (!selectorExists && availableSelectors) {
@@ -556,7 +483,7 @@ export const testDemoLink = async (url: string): Promise<Step[]> => {
               explanation: action.explanation,
               success: action.success,
               timestamp: Date.now(),
-              pageUrl: action.pageUrl,
+              pageUrl: activePage.url(), // Use the current active page URL
               purpose: action.purpose,
             });
 
@@ -605,77 +532,24 @@ export const testDemoLink = async (url: string): Promise<Step[]> => {
     console.error("Test execution failed:", error);
   } finally {
     await browser.close();
+    console.log("Browser closed. Tests completed.");
   }
 
   return testStructure;
 };
 
-// Helper function to find the target page
-async function findTargetPage(
-  context: BrowserContext,
-  targetUrl: string
-): Promise<Page | undefined> {
-  const pages = await context.pages();
-
-  // Try exact match first
-  let targetPage = pages.find((p) => p.url() === targetUrl);
-  if (targetPage) return targetPage;
-
-  // Try matching by pathname
-  try {
-    const urlObj = new URL(targetUrl);
-    const targetPath = urlObj.pathname;
-
-    targetPage = pages.find((p) => {
-      try {
-        return new URL(p.url()).pathname.includes(targetPath);
-      } catch {
-        return false;
-      }
-    });
-
-    if (targetPage) {
-      console.log(`Found page by pathname match: ${targetPage.url()}`);
-      return targetPage;
-    }
-  } catch {
-    // If URL parsing fails, continue to domain matching
-  }
-
-  // Try matching by domain
-  try {
-    const urlObj = new URL(targetUrl);
-    const targetDomain = urlObj.hostname;
-
-    targetPage = pages.find((p) => {
-      try {
-        return new URL(p.url()).hostname === targetDomain;
-      } catch {
-        return false;
-      }
-    });
-
-    if (targetPage) {
-      console.log(`Found page by domain match: ${targetPage.url()}`);
-      return targetPage;
-    }
-  } catch {
-    // If all matching attempts fail
-    return undefined;
-  }
-}
-
-// Modify the determineNextActionAndSubtask function to use the feedback from previous attempts
+// Update determineNextActionAndSubtask function to use the most recent page context instead of all page contexts
 const determineNextActionAndSubtask = async (
   context: BrowserContext,
   currentGoal: string,
   actionHistory: ActionHistory[],
   allGoals: string[],
   currentGoalIndex: number,
+  profileToUse: any,
   selectorFeedback?: { invalidSelector: string; availableSelectors: string[] }
 ): Promise<{ action: EnhancedPageAction; subtask: SubTask }> => {
-  // Get context from all open pages
-  const pageContexts = await getAllPageContexts(context);
+  // Get context from only the most recent page instead of all open pages
+  const pageContext = await getMostRecentPageContext(context);
 
   // Determine if there's a next goal
   const nextGoal =
@@ -695,7 +569,7 @@ const determineNextActionAndSubtask = async (
     : "";
 
   const result = await generateObject({
-    model: openai("gpt-4o-2024-08-06", {
+    model: openai("gpt-4o", {
       structuredOutputs: true,
     }),
     schemaName: "dynamic_action_and_subtask",
@@ -718,7 +592,7 @@ const determineNextActionAndSubtask = async (
             selector: z
               .string()
               .describe(
-                "The selector to use for the action, taken from the element JSON"
+                "The selector to use for the action. Use either the index of the element or its data-ai-index value."
               ),
             value: z.string().optional(),
             explanation: z.string(),
@@ -751,11 +625,14 @@ const determineNextActionAndSubtask = async (
       .required(),
     prompt: `Based on the current goal "${currentGoal}", determine the next logical subtask and specific action to take.
     
-    Available pages and their elements:
-    ${JSON.stringify(pageContexts)}
+    Current page and its elements:
+    ${JSON.stringify(pageContext)}
     
     Previous actions taken (ACTION HISTORY):
     ${JSON.stringify(actionHistory)}
+
+    USER PROFILE:
+    ${JSON.stringify(profileToUse)}
     
     Current goal: "${currentGoal}" (${currentGoalIndex + 1} of ${
       allGoals.length
@@ -765,15 +642,15 @@ const determineNextActionAndSubtask = async (
     ${feedbackMessage}
     
     Consider:
-    1. Don't repeat previous actions unless necessary. Check to see if action history already has this action, and was successful.
+    1. Don't repeat previous actions unless necessary. Check to see if action history already has this action, and was successful. If not, make a change.
     2. Choose the most appropriate next subtask that progresses toward completing the current goal.
-    3. Use the most specific selector possible for the action. DO NOT MAKE UP A SELECTOR - ONLY USE THE ONES THAT EXIST ON THE PAGE.
-    4. Consider all open pages when planning the action
-    5. Indicate if you believe the goal is now complete based on the action history and current state
+    3. IMPORTANT: For the selector, use the numerical index (e.g. "0", "1", "2") or the data-ai-index value (e.g. "ai-0", "ai-1").
+       These are the most reliable ways to identify elements.
+    4. Consider only the current page when planning the action.
+    5. Indicate if you believe the goal is now complete based on the action history and current state.
     6. IMPORTANT: You can decide to advance to the next goal if you determine that the current goal is semantically complete
        based on the actions taken so far. This is different from isGoalComplete - it's about your assessment of the situation.
-    7. IMPORTANT: The flow of the site DOES NOT CORREPSOND TO THE GOAL STRUCTURE. BASED ON THE CURRENT STATE, DETERMINE THE NEXT ACTION ACCORDINGLY.
-    8. IMPORTANT: Only use selectors that are actually present in the available pages and elements. Do not hallucinate selectors.
+    7. IMPORTANT: Only use selectors that are actually present in the current page. Do not hallucinate selectors.
     
     Return both a specific subtask and an action that will help complete this task. The action should be precise and executable.
     Include a "purpose" field that explains why this action is being taken and how it contributes to the overall goal.

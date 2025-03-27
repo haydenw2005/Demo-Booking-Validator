@@ -264,18 +264,3 @@ export const TEST_STRUCUTRE = [
     ],
   },
 ];
-
-export const EXPANSION_PROMPT = (
-  goal: string,
-  elements: any[]
-) => `ONLY IF the goal is too broad to directly automate, break it down into actionable subtasks: "${goal}"
-
-Each subtask MUST correspond 1-to-1 with a real, automatable action on the page (like clicking a link, filling out a form, etc.) — NOTHING ELSE.
-
-Assume full access to all page elements via Playwright. These subtasks will serve as step-by-step test instructions FOR YOU.
-
-Keep the steps AS FEW and AS SPECIFIC as possible. Do NOT overcomplicate.
-
-⚠️ If the goal is already specific enough to automate in one step, DO NOT break it down.
-
-AVAILABLE ELEMENTS: ${JSON.stringify(elements)}`;
