@@ -1,3 +1,50 @@
+import { z } from "zod";
+
+export const ACTION_SUBTASK_SCHEMA = z
+  .object({
+    subtask: z
+      .object({
+        description: z.string().describe("Clear description of this subtask"),
+        success: z.boolean(),
+        error: z.string(),
+      })
+      .required(),
+    action: z
+      .object({
+        action: z.enum(["click", "fill", "select", "wait"]),
+        selector: z
+          .string()
+          .describe(
+            "The selector to use for the action. Use either the index of the element or its data-ai-index value."
+          ),
+        value: z.string().optional(),
+        explanation: z.string(),
+        pageUrl: z.string(),
+        isGoalComplete: z
+          .boolean()
+          .describe(
+            "Whether the current goal is complete, based on the current state."
+          ),
+        advanceToNextGoal: z
+          .boolean()
+          .describe(
+            "Whether to advance to the next goal based on semantic understanding of the current state"
+          ),
+        advanceReason: z
+          .string()
+          .describe("Explanation for why we should advance to the next goal")
+          .optional(),
+        purpose: z
+          .string()
+          .describe(
+            "Brief description of the purpose for taking this action and how it contributes to the overall goal"
+          ),
+      })
+      .strict()
+      .required(),
+  })
+  .required();
+
 export type ClickableElement = {
   index: number;
   tag: string;

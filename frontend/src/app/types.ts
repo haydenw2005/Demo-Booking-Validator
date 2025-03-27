@@ -1,5 +1,5 @@
 export interface TestResult {
-  status: "success" | "error";
+  status: "success" | "error" | "loading";
   message: string;
   statusCode?: number;
   details?: { result: Step[] };

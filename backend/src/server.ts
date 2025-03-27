@@ -1,7 +1,6 @@
 import cors from "cors";
 import express from "express";
-import { testDemoLink } from "./test-demo";
-
+import { beginAgentLoop } from "./test-demo";
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -39,7 +38,7 @@ app.post("/api/test", async (req, res) => {
       goals: goalsToUse,
     });
 
-    const result = await testDemoLink(url, profileToUse, goalsToUse);
+    const result = await beginAgentLoop(url, profileToUse, goalsToUse);
 
     res.json({ success: true, result });
   } catch (error) {

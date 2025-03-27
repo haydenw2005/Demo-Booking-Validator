@@ -1,9 +1,10 @@
 import { openai } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import dotenv from "dotenv";
-import { Browser, BrowserContext, Page, chromium } from "playwright";
-import { z } from "zod";
+import { Browser, BrowserContext, chromium, Page } from "playwright";
+import { ACTION_SUBTASK_PROMPT } from "./constants";
 import {
+  ACTION_SUBTASK_SCHEMA,
   ActionHistory,
   ClickableElement,
   EnhancedPageAction,
@@ -37,9 +38,10 @@ const getMostRecentPageContext = async (
   return { url: mostRecentPage.url(), elements };
 };
 
-// Refactored getPageElements to inject data-ai-index attributes
+// Gets all important elements from the page and injects data-ai-index attributes
 const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
   try {
+    // give some leeway incase JS or CSS or whatever is still loading
     await Promise.race([
       page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {}),
       page
@@ -60,23 +62,20 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
       );
 
       // Filter visible elements and inject data-ai-index attribute
-      let index = 0;
-      elements.forEach((el) => {
+      elements.forEach((el, index) => {
         const style = window.getComputedStyle(el);
         if (
           style.display !== "none" &&
           style.visibility !== "hidden" &&
           style.opacity !== "0"
         ) {
-          // Only set the attribute if it doesn't already exist
+          // THIS INJECTION IS CRITICAL FOR THE AGENT TO WORK, AND IS THE ONLY WAY TO RELIABLY INDEX ELEMENTS
           if (!el.hasAttribute("data-ai-index")) {
             el.setAttribute("data-ai-index", `ai-${pageId}-${index}`);
             index++;
           }
         }
       });
-
-      return index; // Return the number of elements processed
     });
 
     // Now extract the elements with their data-ai-index attributes
@@ -110,6 +109,8 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
               // Get the stable data-ai-index attribute (maintain the format that was set above)
               const dataAiIndex = htmlEl.getAttribute("data-ai-index") || "";
 
+              // Return the element with its data-ai-index attribute, alongside other fields important for the agent to know
+              // the purpose of the element
               return {
                 index: idx,
                 tag: htmlEl.tagName,
@@ -136,7 +137,8 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
   }
 };
 
-// Simplified waitForNewPage function
+// Helper function that handles opening new browser tabs/windows by waiting for page creation and load
+// Returns the new page object after executing the click action and waiting for load states
 const waitForNewPage = async (
   clickAction: () => Promise<void>,
   context: BrowserContext
@@ -163,7 +165,7 @@ const waitForNewPage = async (
   }
 };
 
-// Add a new function to validate if a selector exists on the page
+// Validates if a selector exists on the page
 async function validateSelector(
   page: Page,
   selector: string
@@ -178,7 +180,7 @@ async function validateSelector(
   }
 }
 
-// Refactored enhancedExecutePageAction to use data-ai-index for element selection
+// Executes a page action on the current page, using the action defined by the agent
 const enhancedExecutePageAction = async (
   page: Page,
   action: PageAction,
@@ -197,6 +199,7 @@ const enhancedExecutePageAction = async (
     let selector = action.selector;
 
     // Case 1: If selector is a number (index), convert to data-ai-index
+    // Not actually sure if this is still needed, but keeping it here for now
     if (!isNaN(Number(action.selector))) {
       console.log(`Using index ${action.selector} for element selection.`);
       // Get all elements and find the one with matching index
@@ -218,7 +221,7 @@ const enhancedExecutePageAction = async (
       // Use the data-ai-index attribute for selection
       selector = `[data-ai-index="${targetElement.dataAiIndex}"]`;
     }
-    // Case 2: If selector starts with "ai-", assume it's already a data-ai-index
+    // Case 2: If selector starts with "ai-", assume it's already a data-ai-index, and not lets use it as a selector
     else if (
       typeof action.selector === "string" &&
       action.selector.startsWith("ai-")
@@ -229,9 +232,10 @@ const enhancedExecutePageAction = async (
     // Validate the selector exists on the page
     const selectorExists = await validateSelector(page, selector);
 
+    // critical part of the evaluation loop!!!! Will get passed back to the agent to help reduce hallucination and understand mistake
     if (!selectorExists) {
       // If selector doesn't exist, get available selectors as hints
-      const availableElements = await getAvailableElements(page);
+      const availableElements = await getPageElements(page);
       console.log(`Selector "${selector}" does not exist on the page`);
 
       // Create formatted strings for each element
@@ -255,6 +259,7 @@ const enhancedExecutePageAction = async (
 
     switch (action.action) {
       case "click":
+        // if anchor tag, wait until it opens new tab/window
         const targetInfo = await page
           .evaluate((selector) => {
             const el = document.querySelector(selector);
@@ -275,7 +280,10 @@ const enhancedExecutePageAction = async (
             newPage: newPage || undefined,
             selectorExists: true,
           };
-        } else {
+        }
+
+        // if not anchor tag, wait until page settles before moving ons
+        else {
           const pagePromise = context
             .waitForEvent("page", { timeout: 5000 })
             .catch(() => null);
@@ -292,17 +300,20 @@ const enhancedExecutePageAction = async (
         }
         break;
 
+      // case for inputs, textareas, etc.
       case "fill":
         if (!action.value) throw new Error("Value required for fill action");
         await page.click(action.selector).catch(() => {}); // Try to focus first
         await page.fill(action.selector, action.value);
         break;
 
+      // case for dropdowns
       case "select":
         if (!action.value) throw new Error("Value required for select action");
         await page.selectOption(action.selector, action.value);
         break;
 
+      // case for waiting, maybe an action is simply to check if something exists, etc.
       case "wait":
         await new Promise((resolve) => setTimeout(resolve, 1500));
         break;
@@ -318,29 +329,100 @@ const enhancedExecutePageAction = async (
   }
 };
 
-// Helper function to get available elements with their data-ai-index values
-async function getAvailableElements(page: Page): Promise<ClickableElement[]> {
-  try {
-    return await getPageElements(page);
-  } catch (error) {
-    console.error("Error getting available elements:", error);
-    return [];
-  }
-}
+// This is THE critical agent function. It determines the next action and subtask.
+const determineNextActionAndSubtask = async (
+  context: BrowserContext,
+  currentGoal: string,
+  actionHistory: ActionHistory[],
+  allGoals: string[],
+  currentGoalIndex: number,
+  profileToUse: any,
+  selectorFeedback?: { invalidSelector: string; availableSelectors: string[] }
+): Promise<{ action: EnhancedPageAction; subtask: SubTask }> => {
+  // Get context from only the most recent page instead of all open pages
+  const pageContext = await getMostRecentPageContext(context);
 
-// Modify the testDemoLink function signature
-export const testDemoLink = async (
+  // Determine if there's another goal to complete, important for deciding if we should advance to next goal.
+  const nextGoal =
+    currentGoalIndex < allGoals.length - 1
+      ? allGoals[currentGoalIndex + 1]
+      : null;
+
+  // Add feedback about hallucinated selectors if available!!! So knows not to make same mistake again, etc. reduce hallucination.
+  const feedbackMessage = selectorFeedback
+    ? `IMPORTANT: Your previous attempt used selector "${
+        selectorFeedback.invalidSelector
+      }" which does not exist on the page. 
+       Please choose only from the actual elements present on the page. 
+       Some available elements include: ${selectorFeedback.availableSelectors.join(
+         ", "
+       )}`
+    : "";
+
+  const result = await generateObject({
+    model: openai("gpt-4o", {
+      structuredOutputs: true,
+    }),
+    schemaName: "dynamic_action_and_subtask",
+    schemaDescription:
+      "Dynamically determine the next subtask and action based on the current ELEMENT STATE and GOAL",
+    schema: ACTION_SUBTASK_SCHEMA,
+    prompt: `Based on the current goal "${currentGoal}", determine the next logical subtask and specific action to take.
+    
+    Current page and its elements:
+    ${JSON.stringify(pageContext)}
+    
+    Previous actions taken (ACTION HISTORY):
+    ${JSON.stringify(actionHistory)}
+
+    USER PROFILE:
+    ${JSON.stringify(profileToUse)}
+    
+    Current goal: "${currentGoal}" (${currentGoalIndex + 1} of ${
+      allGoals.length
+    })
+    ${nextGoal ? `Next goal: "${nextGoal}"` : "This is the final goal"}
+    
+    ${feedbackMessage}
+    
+    ${ACTION_SUBTASK_PROMPT}`,
+  });
+
+  // Transform result to the expected format
+  const generatedResult = result.object as {
+    subtask: {
+      description: string;
+      success: boolean;
+      error: string;
+    };
+    action: EnhancedPageAction;
+  };
+
+  // Convert boolean success to string enum
+  const subtask: SubTask = {
+    description: generatedResult.subtask.description,
+    success: "not attempted",
+    error: generatedResult.subtask.error,
+  };
+
+  return {
+    action: generatedResult.action,
+    subtask: subtask,
+  };
+};
+
+// PRIMARY AGENT LOOP
+export const beginAgentLoop = async (
   url: string,
   testProfile: any,
   providedGoals: string[]
 ): Promise<Step[]> => {
+  const goals = providedGoals;
+
+  // Launch browser
   const browser: Browser = await chromium.launch({
     headless: false,
-    slowMo: 300, // Slightly faster while still stable
   });
-
-  // Use provided goals if available, otherwise use the default goals
-  const goals = providedGoals;
 
   const context: BrowserContext = await browser.newContext({
     javaScriptEnabled: true,
@@ -380,7 +462,7 @@ export const testDemoLink = async (
   try {
     // Navigate to the initial URL
     console.log(`Navigating to: ${url}`);
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 3000 });
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Process goals sequentially
@@ -406,7 +488,7 @@ export const testDemoLink = async (
         // Get the current active page (will be updated if new tabs are opened)
         let activePage = (await context.pages())[0];
 
-        // Action loop for current goal
+        // Action/subtask chaining loop for current goal
         while (!currentStep.completed && maxActions > 0) {
           try {
             // Get the most recent page
@@ -415,7 +497,7 @@ export const testDemoLink = async (
 
             console.log(`\nActive page: ${activePage.url()}`);
 
-            // Determine next action with potential selector feedback
+            // Determine next action and subtask with potential selector feedback and page context
             const { action, subtask } = await determineNextActionAndSubtask(
               context,
               goal,
@@ -433,11 +515,11 @@ export const testDemoLink = async (
             console.log(`Subtask: ${subtask.description}`);
             currentStep.subtasks.push(subtask);
 
-            // Check if goal is complete
-            if (action.advanceToNextGoal || action.isGoalComplete) {
+            // Check if goal is complete based off of llm response
+            if (action.advanceToNextGoal) {
               currentStep.completed = true;
               currentStep.success = "true";
-              subtask.success = "true";
+              //subtask.success = "true";
               console.log(
                 action.advanceToNextGoal
                   ? `Advanced to next goal: ${
@@ -478,7 +560,7 @@ export const testDemoLink = async (
               continue;
             }
 
-            // Record the action
+            // Record the action, used as context for next action and all future actions
             actionHistory.push({
               explanation: action.explanation,
               success: action.success,
@@ -536,150 +618,4 @@ export const testDemoLink = async (
   }
 
   return testStructure;
-};
-
-// Update determineNextActionAndSubtask function to use the most recent page context instead of all page contexts
-const determineNextActionAndSubtask = async (
-  context: BrowserContext,
-  currentGoal: string,
-  actionHistory: ActionHistory[],
-  allGoals: string[],
-  currentGoalIndex: number,
-  profileToUse: any,
-  selectorFeedback?: { invalidSelector: string; availableSelectors: string[] }
-): Promise<{ action: EnhancedPageAction; subtask: SubTask }> => {
-  // Get context from only the most recent page instead of all open pages
-  const pageContext = await getMostRecentPageContext(context);
-
-  // Determine if there's a next goal
-  const nextGoal =
-    currentGoalIndex < allGoals.length - 1
-      ? allGoals[currentGoalIndex + 1]
-      : null;
-
-  // Add feedback about hallucinated selectors if available
-  const feedbackMessage = selectorFeedback
-    ? `IMPORTANT: Your previous attempt used selector "${
-        selectorFeedback.invalidSelector
-      }" which does not exist on the page. 
-       Please choose only from the actual elements present on the page. 
-       Some available elements include: ${selectorFeedback.availableSelectors.join(
-         ", "
-       )}`
-    : "";
-
-  const result = await generateObject({
-    model: openai("gpt-4o", {
-      structuredOutputs: true,
-    }),
-    schemaName: "dynamic_action_and_subtask",
-    schemaDescription:
-      "Dynamically determine the next subtask and action based on the current ELEMENT STATE and GOAL",
-    schema: z
-      .object({
-        subtask: z
-          .object({
-            description: z
-              .string()
-              .describe("Clear description of this subtask"),
-            success: z.boolean(),
-            error: z.string(),
-          })
-          .required(),
-        action: z
-          .object({
-            action: z.enum(["click", "fill", "select", "wait"]),
-            selector: z
-              .string()
-              .describe(
-                "The selector to use for the action. Use either the index of the element or its data-ai-index value."
-              ),
-            value: z.string().optional(),
-            explanation: z.string(),
-            pageUrl: z.string(),
-            isGoalComplete: z
-              .boolean()
-              .describe(
-                "Whether the current goal is complete, based on the current state."
-              ),
-            advanceToNextGoal: z
-              .boolean()
-              .describe(
-                "Whether to advance to the next goal based on semantic understanding of the current state"
-              ),
-            advanceReason: z
-              .string()
-              .describe(
-                "Explanation for why we should advance to the next goal"
-              )
-              .optional(),
-            purpose: z
-              .string()
-              .describe(
-                "Brief description of the purpose for taking this action and how it contributes to the overall goal"
-              ),
-          })
-          .strict()
-          .required(),
-      })
-      .required(),
-    prompt: `Based on the current goal "${currentGoal}", determine the next logical subtask and specific action to take.
-    
-    Current page and its elements:
-    ${JSON.stringify(pageContext)}
-    
-    Previous actions taken (ACTION HISTORY):
-    ${JSON.stringify(actionHistory)}
-
-    USER PROFILE:
-    ${JSON.stringify(profileToUse)}
-    
-    Current goal: "${currentGoal}" (${currentGoalIndex + 1} of ${
-      allGoals.length
-    })
-    ${nextGoal ? `Next goal: "${nextGoal}"` : "This is the final goal"}
-    
-    ${feedbackMessage}
-    
-    Consider:
-    1. Don't repeat previous actions unless necessary. Check to see if action history already has this action, and was successful. If not, make a change.
-    2. Choose the most appropriate next subtask that progresses toward completing the current goal.
-    3. IMPORTANT: For the selector, use the numerical index (e.g. "0", "1", "2") or the data-ai-index value (e.g. "ai-0", "ai-1").
-       These are the most reliable ways to identify elements.
-    4. Consider only the current page when planning the action.
-    5. Indicate if you believe the goal is now complete based on the action history and current state.
-    6. IMPORTANT: You can decide to advance to the next goal if you determine that the current goal is semantically complete
-       based on the actions taken so far. This is different from isGoalComplete - it's about your assessment of the situation.
-    7. IMPORTANT: Only use selectors that are actually present in the current page. Do not hallucinate selectors.
-    
-    Return both a specific subtask and an action that will help complete this task. The action should be precise and executable.
-    Include a "purpose" field that explains why this action is being taken and how it contributes to the overall goal.
-    
-    For the 'value' field, only include it if the action is 'fill' or 'select' - leave it undefined otherwise.
-    
-    Set 'advanceToNextGoal' to true if you believe that enough actions have been taken to satisfy the current goal and we
-    should move on to the next goal. Provide an 'advanceReason' explaining why you believe we should advance.`,
-  });
-
-  // Transform result to the expected format
-  const generatedResult = result.object as unknown as {
-    subtask: {
-      description: string;
-      success: boolean;
-      error: string;
-    };
-    action: EnhancedPageAction;
-  };
-
-  // Convert boolean success to string enum
-  const subtask: SubTask = {
-    description: generatedResult.subtask.description,
-    success: "not attempted",
-    error: generatedResult.subtask.error,
-  };
-
-  return {
-    action: generatedResult.action,
-    subtask: subtask,
-  };
 };

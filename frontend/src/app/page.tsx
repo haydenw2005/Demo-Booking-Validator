@@ -19,16 +19,14 @@ export default function Home() {
     phone: "+1234567890",
     company: "Example Inc.",
     jobTitle: "Software Engineer",
-    country: "United States",
-    timezone: "America/New_York",
-    description:
+    additionalInfo:
       "this is a test profile for my AI agent demo booking test agent-- sorry if this works.",
   });
 
   // Default goals
   const [goals, setGoals] = useState([
-    'Detect "Book a Demo" (or similar) buttons/links',
-    `Click through to the booking flow`,
+    'Detect and click "Book a Demo" (or similar) buttons/links',
+    `Click through to the booking flow, Select the data and time to book`,
     "Fill out any required forms",
     "Complete the meeting scheduling process",
     "Verify the booking was successful (e.g., confirmation page)",
@@ -88,7 +86,7 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="w-3xl mx-auto">
           <div className="bg-white shadow sm:rounded-lg p-6 ">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6 text-center">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-6 text-center">
               Test Demo Booking Flow
             </h2>
             <form onSubmit={handleSubmit} className="space-yt-6 space-y-3">
@@ -136,10 +134,24 @@ export default function Home() {
               </div>
             </form>
             {/* Result Display */}
-            <div className="mt-3">
-              {result && <TestResultsDisplay results={result} />}
-            </div>
           </div>
+        </div>
+        <div className="mt-6">
+          {/* Conditional rendering based on application state */}
+          {isLoading ? (
+            <TestResultsDisplay
+              results={{ status: "loading", message: "Running tests..." }}
+              isLoading={true}
+            />
+          ) : result ? (
+            <TestResultsDisplay results={result} isLoading={false} />
+          ) : (
+            <TestResultsDisplay
+              results={{ status: "loading", message: "" }}
+              isLoading={false}
+              showInitialState={true}
+            />
+          )}
         </div>
       </main>
     </div>

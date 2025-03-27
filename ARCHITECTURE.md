@@ -74,7 +74,7 @@ The applications are intentionally kept separate (not a monorepo) for simplicity
 
 ### User Customization Features
 
-- **Test Profile Customization**: Users can edit all fields of the test profile including:
+- **Test Profile Customization**: Users can edit and all fields of the test profile including:
   - Name, email, phone number
   - Company, job title
   - Country, timezone
@@ -83,6 +83,7 @@ The applications are intentionally kept separate (not a monorepo) for simplicity
   - Edit existing test goals
   - Remove test goals
   - Add new test goals
+  - Reorganzie goals
 - The customized data is sent to the backend and used for the actual test execution
 - Default values are provided if users choose not to customize
 
@@ -174,8 +175,6 @@ The demo validator now uses a fully dynamic testing approach:
    - Whether it was successful
    - An explanation of what happened
    - A purpose describing why the action was taken and how it relates to the goal
-
-9. **Cross-Page Awareness**: The system can navigate across multiple browser pages/tabs
 
 ### Benefits of Dynamic Testing
 
