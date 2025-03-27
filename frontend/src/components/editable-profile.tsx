@@ -22,15 +22,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 interface TestProfile {
-  name: string;
-  email: string;
-  phone: string;
-  company: string;
-  jobTitle: string;
-  country: string;
-  timezone: string;
-  description: string;
-  [key: string]: string; // Allow additional properties
+  [key: string]: string;
 }
 
 interface EditableProfileProps {
