@@ -7,13 +7,18 @@ import Header from "../components/header";
 import TestResultsDisplay from "../components/test-results-display";
 import { TestResult } from "./types";
 
+// Import or define TestProfile type
+interface TestProfile {
+  [key: string]: string;
+}
+
 export default function Home() {
   const [url, setUrl] = useState("https://www.revyl.ai/");
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<TestResult | null>(null);
 
   // Default test profile
-  const [testProfile, setTestProfile] = useState({
+  const [testProfile, setTestProfile] = useState<TestProfile>({
     name: "Hayden White",
     email: "haydenswhite@gmail.com",
     phone: "+1234567890",

@@ -76,7 +76,7 @@ const SortableGoalItem = ({
       <Textarea
         value={goal}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-grow min-h-[80px] resize-y"
+        className="flex-grow min-h-[50px] resize-y"
         placeholder="Enter your test goal here..."
       />
 

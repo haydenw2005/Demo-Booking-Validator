@@ -810,6 +810,10 @@
     min-height: calc(var(--spacing) * 16);
   }
 
+  .min-h-\[50px\] {
+    min-height: 50px;
+  }
+
   .min-h-\[80px\] {
     min-height: 80px;
   }
