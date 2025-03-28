@@ -86,13 +86,13 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
     const frames = page.frames();
 
     // Process each iframe
+    let totalFrames = 0;
     for (const frame of frames) {
       // Skip the main frame (already processed)
       if (frame === page.mainFrame()) continue;
 
       try {
-        console.log(`Processing iframe: ${frame.url()}`);
-
+        totalFrames++;
         // Inject data-ai-index attributes into iframe elements
         await frame
           .evaluate(() => {
@@ -108,12 +108,9 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
 
             // Filter visible elements and inject data-ai-index attribute
             elements.forEach((el, index) => {
-              const style = window.getComputedStyle(el);
-              if (true) {
-                if (!el.hasAttribute("data-ai-index")) {
-                  el.setAttribute("data-ai-index", `ai-${frameId}-${index}`);
-                  index++;
-                }
+              if (!el.hasAttribute("data-ai-index")) {
+                el.setAttribute("data-ai-index", `ai-${frameId}-${index}`);
+                index++;
               }
             });
           })
@@ -133,6 +130,8 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
 
     // Combine elements from main page and iframes
     const allElements = [...mainElements, ...frameElements];
+    console.log(`Iframes processed: ${totalFrames}`);
+
     console.log(
       `Found ${allElements.length} elements in total (${mainElements.length} from main page, ${frameElements.length} from iframes)`
     );
@@ -242,21 +241,6 @@ const waitForNewPage = async (
     return null;
   }
 };
-
-// Validates if a selector exists on the page
-async function validateSelector(
-  page: Page,
-  selector: string
-): Promise<boolean> {
-  try {
-    // Check if the selector exists on the page
-    const count = await page.$$eval(selector, (elements) => elements.length);
-    return count > 0;
-  } catch (error) {
-    // If there's an error evaluating the selector, it's invalid
-    return false;
-  }
-}
 
 // Executes a page action on the current page, using the action defined by the agent
 const enhancedExecutePageAction = async (
