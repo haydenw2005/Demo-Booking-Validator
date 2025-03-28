@@ -2,6 +2,8 @@
 
 A full-stack application for testing websites through AI-powered automated validation.
 
+![Demo Image](demo-image.png)
+
 ## Overview
 
 Demo Booking Validator is a tool that allows you to test landing pages and demo experiences automatically. It simulates user behavior to validate that your website's critical paths work as expected. The system uses AI-powered, agentic testing to:

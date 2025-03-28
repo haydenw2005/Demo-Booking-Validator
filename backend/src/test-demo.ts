@@ -65,10 +65,9 @@ const getPageElements = async (page: Page): Promise<ClickableElement[]> => {
       elements.forEach((el, index) => {
         const style = window.getComputedStyle(el);
         if (
-          // style.display !== "none" &&
-          // style.visibility !== "hidden" &&
-          // style.opacity !== "0"
-          true
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          style.opacity !== "0"
         ) {
           // THIS INJECTION IS CRITICAL FOR THE AGENT TO WORK, AND IS THE ONLY WAY TO RELIABLY INDEX ELEMENTS
           if (!el.hasAttribute("data-ai-index")) {
@@ -158,10 +157,9 @@ const extractElementsFromFrame = async (
             .filter((el) => {
               const style = window.getComputedStyle(el as HTMLElement);
               return (
-                // style.display !== "none" &&
-                // style.visibility !== "hidden" &&
-                // style.opacity !== "0"
-                true
+                style.display !== "none" &&
+                style.visibility !== "hidden" &&
+                style.opacity !== "0"
               );
             })
             .map((el: Element, idx: number) => {
