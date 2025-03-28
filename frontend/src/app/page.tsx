@@ -19,13 +19,13 @@ export default function Home() {
 
   // Default test profile
   const [testProfile, setTestProfile] = useState<TestProfile>({
-    name: "Hayden White",
-    email: "haydenswhite@gmail.com",
-    phone: "8582811220",
+    name: "John Doe",
+    email: "johndoe@gmail.com",
+    phone: "2063037777",
     company: "Example Inc.",
     jobTitle: "Software Engineer",
     additionalInfo:
-      "this is a test profile for my AI agent demo booking test agent-- sorry if this works.",
+      "this is a test profile for my AI agent demo booking test agent",
   });
 
   // Default goals
