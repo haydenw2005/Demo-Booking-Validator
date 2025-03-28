@@ -1,34 +1,15 @@
 # Project Architecture
 
 This project is a full-stack TypeScript application split into two main parts: frontend and backend.
+Note: This file is maintained by LLMs for LLM context in applications like cursor.
 
 ## Backend (Port 4000)
 
-The backend is built with Node.js and Express, using TypeScript. It follows a modular architecture:
-
-```
-backend/
-├── src/
-│   ├── controllers/    # Request handlers
-│   ├── routes/        # Route definitions
-│   └── index.ts       # Main application entry point
-└── tsconfig.json      # TypeScript configuration
-```
+The backend is built with Node.js and Express, using TypeScript.
 
 ## Frontend (Port 3000)
 
 The frontend is built with Next.js 13+ (App Router), TypeScript, and Tailwind CSS:
-
-```
-frontend/
-├── app/
-│   ├── layout.tsx     # Root layout
-│   ├── page.tsx       # Main page
-│   └── globals.css    # Global styles
-├── components/        # React components
-├── tsconfig.json     # TypeScript configuration
-└── tailwind.config.js # Tailwind configuration
-```
 
 ## Communication
 
@@ -56,13 +37,6 @@ The applications are intentionally kept separate (not a monorepo) for simplicity
 - Next.js 14 with TypeScript
 - Tailwind CSS for styling
 - React for UI components
-
-### Component Structure
-
-- `Header.tsx`: Main navigation header with links to Home and History
-- `page.tsx`: Main landing page with URL input form and test configuration
-- `layout.tsx`: Root layout with global styles and metadata
-- `ApiTestResultDisplay.tsx`: Component to display test results
 
 ### UI Flow
 

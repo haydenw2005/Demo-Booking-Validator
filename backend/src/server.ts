@@ -5,32 +5,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Default values if not provided by the frontend
-const defaultTestProfile = {
-  name: "John Doe",
-  email: "john.doe@example.com",
-  phone: "+1234567890",
-  company: "Example Inc.",
-  jobTitle: "Software Engineer",
-  country: "United States",
-  timezone: "America/New_York",
-};
-
-const defaultGoals = [
-  'Detect "Book a Demo" (or similar) buttons/links',
-  "Click through to the booking flow",
-  "Fill out any required forms",
-  "Complete the meeting scheduling process",
-  "Verify the booking was successful (e.g., confirmation page)",
-];
-
 app.post("/api/test", async (req, res) => {
   try {
     const { url, testProfile, goals } = req.body;
 
-    // Use provided values or fall back to defaults
-    const profileToUse = testProfile || defaultTestProfile;
-    const goalsToUse = goals || defaultGoals;
+    if (!testProfile || Object.keys(testProfile).length === 0) {
+      throw new Error("Test profile cannot be empty");
+    }
+    if (!goals || goals.length === 0) {
+      throw new Error("Test goals cannot be empty");
+    }
+
+    const profileToUse = testProfile;
+    const goalsToUse = goals;
 
     console.log("Running test with:", {
       url,

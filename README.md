@@ -4,7 +4,7 @@ A full-stack application for testing websites through AI-powered automated valid
 
 ## Overview
 
-Demo Booking Validator is a tool that allows you to test landing pages and demo experiences automatically. It simulates user behavior to validate that your website's critical paths work as expected. The system uses AI-powered testing to:
+Demo Booking Validator is a tool that allows you to test landing pages and demo experiences automatically. It simulates user behavior to validate that your website's critical paths work as expected. The system uses AI-powered, agentic testing to:
 
 1. Navigate to your landing page URL
 2. Find and interact with demo forms and buttons
@@ -100,7 +100,7 @@ The Demo Validator uses a dynamic testing approach powered by AI:
 1. Open your browser and go to http://localhost:3000
 2. Enter the URL of the landing page you want to test
 3. Optionally customize the test profile and test goals
-4. Click the "Run Test" button to start the validation
+4. Click the "Start Test" button to start the validation
 5. View the results of the test, including actions taken and screenshots
 
 ## Development
@@ -111,4 +111,3 @@ Each part of the application can be run independently:
 - Frontend: Uses Next.js development server with turbopack
 
 For more detailed information about the architecture, please refer to [ARCHITECTURE.md](./ARCHITECTURE.md).
-(ARCHITECTURE.md is a file I use to maintain state wide, high level architectural context of the project for use with LLMs)
