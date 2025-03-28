@@ -12,7 +12,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { CheckCircle, TestTubeDiagonal, XCircle } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle,
+  TestTubeDiagonal,
+  XCircle,
+} from "lucide-react";
 import { Step, Subtask, TestResult } from "../app/types";
 import { Badge } from "./test-badge";
 
@@ -235,29 +240,32 @@ export default function TestResultsDisplay({
     );
   }
 
-  console.log(results);
-
   const steps = results.details?.result;
 
-  // Calculate completion metrics
-  const completedSteps = steps?.filter((step) => step.completed).length || 0;
-  const totalSteps = steps?.length || 0;
-  const stepsPercentage =
-    totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
-
-  // Calculate subtask completion
+  // Calculate completion metrics based on subtasks
   let completedSubtasks = 0;
   let totalSubtasks = 0;
+  let completedSteps = 0;
+  let totalSteps = 0;
 
   steps?.forEach((step) => {
-    step.subtasks.forEach((subtask) => {
-      totalSubtasks++;
-      if (subtask.success === "true") {
-        completedSubtasks++;
-      }
-    });
+    const stepSubtasks = step.subtasks.length;
+    const stepCompletedSubtasks = step.subtasks.filter(
+      (subtask) => subtask.success === "true"
+    ).length;
+
+    totalSubtasks += stepSubtasks;
+    completedSubtasks += stepCompletedSubtasks;
+
+    // A step is considered completed if at least one subtask succeeded
+    if (stepCompletedSubtasks > 0) {
+      completedSteps++;
+    }
+    totalSteps++;
   });
 
+  const stepsPercentage =
+    totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
   const subtasksPercentage =
     totalSubtasks > 0 ? (completedSubtasks / totalSubtasks) * 100 : 0;
 
@@ -266,9 +274,8 @@ export default function TestResultsDisplay({
       <CardHeader>
         <CardTitle>Test Results</CardTitle>
         <CardDescription>
-          Execution summary with{" "}
-          {steps?.filter((step) => step.completed).length} of {steps?.length}{" "}
-          steps completed successfully
+          Execution summary with {completedSteps} of {totalSteps} steps
+          completed successfully
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -304,6 +311,20 @@ export default function TestResultsDisplay({
 }
 
 function StepItem({ step, index }: { step: Step; index: number }) {
+  // Calculate subtask success metrics
+  const totalSubtasks = step.subtasks.length;
+  const successfulSubtasks = step.subtasks.filter(
+    (subtask) => subtask.success === "true"
+  ).length;
+
+  // Determine if we should show warning state (some subtasks failed but goal succeeded)
+  const hasFailedSubtasks = step.subtasks.some(
+    (subtask) => subtask.success !== "true"
+  );
+  const showWarning = hasFailedSubtasks && successfulSubtasks > 0;
+  const showError = successfulSubtasks === 0;
+  const isCompleted = successfulSubtasks > 0;
+
   return (
     <AccordionItem
       value={`step-${index}`}
@@ -311,10 +332,20 @@ function StepItem({ step, index }: { step: Step; index: number }) {
     >
       <div
         className={`flex items-center p-4 ${
-          step.completed ? "bg-green-50" : "bg-red-50"
+          showError
+            ? "bg-red-50"
+            : showWarning
+            ? "bg-yellow-50"
+            : isCompleted
+            ? "bg-green-50"
+            : "bg-red-50"
         }`}
       >
-        <StatusIcon success={step.completed} />
+        <StatusIcon
+          success={isCompleted}
+          warning={showWarning}
+          error={showError}
+        />
         <div className="ml-3 flex-1">
           <h3 className="font-medium text-sm">
             Step {index + 1}:{" "}
@@ -322,19 +353,36 @@ function StepItem({ step, index }: { step: Step; index: number }) {
               ? `${step.description.slice(0, 100)}...`
               : step.description}
           </h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {successfulSubtasks} of {totalSubtasks} subtasks completed
+          </p>
         </div>
         <Badge
-          variant={step.completed ? "success" : "destructive"}
+          variant={
+            showError
+              ? "destructive"
+              : showWarning
+              ? "secondary"
+              : isCompleted
+              ? "success"
+              : "destructive"
+          }
           className="ml-2"
         >
-          {step.completed ? "Completed" : "Failed"}
+          {showError
+            ? "Failed"
+            : showWarning
+            ? "Partial Success"
+            : isCompleted
+            ? "Completed"
+            : "Failed"}
         </Badge>
         <AccordionTrigger className="ml-2" />
       </div>
       <AccordionContent className="px-0">
         <div className="border-t pt-2 pb-1 px-4">
           <h4 className="text-sm font-medium text-muted-foreground mb-2">
-            Subtasks
+            Subtasks ({successfulSubtasks}/{totalSubtasks})
           </h4>
           <div className="space-y-2">
             {step.subtasks.map((subtask, subtaskIndex) => (
@@ -374,11 +422,21 @@ function SubtaskItem({ subtask }: { subtask: Subtask }) {
 
 function StatusIcon({
   success,
+  warning,
+  error,
   className = "",
 }: {
   success: boolean;
+  warning?: boolean;
+  error?: boolean;
   className?: string;
 }) {
+  if (error) {
+    return <XCircle className={`h-5 w-5 text-red-600 ${className}`} />;
+  }
+  if (warning) {
+    return <AlertCircle className={`h-5 w-5 text-yellow-600 ${className}`} />;
+  }
   return success ? (
     <CheckCircle className={`h-5 w-5 text-green-600 ${className}`} />
   ) : (

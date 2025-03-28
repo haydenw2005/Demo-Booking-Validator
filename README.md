@@ -3,6 +3,8 @@
 A full-stack application for testing websites through AI-powered automated validation.
 
 ![Demo Image](demo-image.png)
+![Agent Flow](agentflow.jpg)
+(Above is a simple representation of the dynamic feedback loop that enables the agent to navigate websites and dynamically generate test cases)
 
 ## Overview
 
