@@ -178,6 +178,27 @@ function GetStartedDisplay() {
   );
 }
 
+// Error display component
+function ErrorDisplay({ message }: { message: string }) {
+  return (
+    <Card className="w-full max-w-4xl mx-auto">
+      <CardContent className="pt-6">
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+            <XCircle className="w-8 h-8 text-red-600" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Test Failed
+          </h3>
+          <p className="text-sm text-gray-500 text-center max-w-md">
+            {message}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function TestResultsDisplay({
   results,
   isLoading = false,
@@ -187,6 +208,11 @@ export default function TestResultsDisplay({
   isLoading?: boolean;
   showInitialState?: boolean;
 }) {
+  // Show error state if there's an error
+  if (results.status === "error") {
+    return <ErrorDisplay message={results.message} />;
+  }
+
   // Show "get started" screen if explicitly requested
   if (showInitialState) {
     return (

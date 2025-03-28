@@ -63,13 +63,19 @@ The Demo Validator uses a dynamic testing approach powered by AI:
    npm install
    ```
 
-3. Create a `.env` file with your OpenAI API key:
+3. Install playwright browsers:
+
+   ```
+   npx playwright install
+   ```
+
+4. Create a `.env` file with your OpenAI API key:
 
    ```
    OPENAI_API_KEY=your_api_key_here
    ```
 
-4. Start the development server:
+5. Start the development server:
    ```
    npm run dev
    ```

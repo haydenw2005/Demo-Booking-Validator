@@ -15,11 +15,10 @@ export const ACTION_SUBTASK_SCHEMA = z
         selector: z
           .string()
           .describe(
-            "The selector to use for the action. Use either the index of the element or its data-ai-index value."
+            "The selector to use for the action. YOU MUST USE THE data-ai-index value ([ai-#])"
           ),
         value: z.string().optional(),
         explanation: z.string(),
-        pageUrl: z.string(),
         isGoalComplete: z
           .boolean()
           .describe(
@@ -51,6 +50,11 @@ export type ClickableElement = {
   text: string;
   href: string;
   dataAiIndex: string;
+  id?: string;
+  name?: string;
+  type?: string;
+  time?: string;
+  frameType?: "main" | "iframe"; // Indicates whether the element is from the main page or an iframe
 };
 
 export type SubTask = {

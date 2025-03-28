@@ -21,7 +21,7 @@ export default function Home() {
   const [testProfile, setTestProfile] = useState<TestProfile>({
     name: "Hayden White",
     email: "haydenswhite@gmail.com",
-    phone: "+1234567890",
+    phone: "8582811220",
     company: "Example Inc.",
     jobTitle: "Software Engineer",
     additionalInfo:
